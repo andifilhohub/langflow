@@ -9,6 +9,7 @@ import {
   type SelectionDragHandler,
 } from "@xyflow/react";
 import _, { cloneDeep } from "lodash";
+import { PanOnScrollMode } from "@xyflow/react";
 import {
   type KeyboardEvent,
   type MouseEvent,
@@ -763,14 +764,14 @@ export default function Page({
               isVisible={selectionMenuVisible}
               nodes={lastSelection?.nodes}
               onClick={handleGroupNode}
-            />
+              />
             <ReactFlow<AllNodeType, EdgeType>
               nodes={nodes}
               edges={edges}
               onNodesChange={onNodesChangeWithHelperLines}
               onEdgesChange={onEdgesChange}
               onConnect={isLocked ? undefined : onConnectMod}
-              disableKeyboardA11y={true}
+              disableKeyboardA11y
               nodesFocusable={!isLocked}
               edgesFocusable={!isLocked}
               onInit={setReactFlowInstance}
@@ -792,20 +793,21 @@ export default function Page({
               onDrop={onDrop}
               onSelectionChange={onSelectionChange}
               deleteKeyCode={[]}
-              fitView={isEmptyFlow.current ? false : true}
+              fitView={!isEmptyFlow.current}
               fitViewOptions={fitViewOptions}
               className="theme-attribution"
               tabIndex={isLocked ? -1 : undefined}
               minZoom={MIN_ZOOM}
               maxZoom={MAX_ZOOM}
-              zoomOnScroll={!view}
-              zoomOnPinch={!view}
+              zoomOnScroll={false}
+              zoomOnPinch={true}
               panOnDrag={!view}
-              panActivationKeyCode={""}
+              panOnScrollMode={PanOnScrollMode.Free} 
+              panOnScroll={true}
               proOptions={{ hideAttribution: true }}
               onPaneClick={onPaneClick}
               onEdgeClick={handleEdgeClick}
-              onKeyDown={handleKeyDown}
+              onKeyDown={handleKeyDown} 
               onNodeContextMenu={onNodeContextMenu}
             >
               <FlowBuildingComponent />
@@ -813,6 +815,7 @@ export default function Page({
               <MemoizedBackground />
               {helperLineEnabled && <HelperLines helperLines={helperLines} />}
             </ReactFlow>
+
           </div>
           <div
             id="shadow-box"
@@ -835,5 +838,6 @@ export default function Page({
       )}
       <ExportModal open={openExportModal} setOpen={setOpenExportModal} />
     </div>
+    
   );
 }
