@@ -1,6 +1,7 @@
 import json
 import re
 import tempfile
+from copy import deepcopy
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -236,6 +237,27 @@ class APIRequestComponent(Component):
         """Check if an item is a valid key-value dictionary."""
         return isinstance(item, dict) and "key" in item and "value" in item
 
+    def _ensure_build_config_value(self, build_config: dotdict, field_name: str, value: Any) -> dotdict:
+        """Ensure build_config and component state stay in sync for a given field."""
+        entry = build_config.get(field_name)
+        if not isinstance(entry, dict):
+            entry = dotdict()
+            build_config[field_name] = entry
+        elif not isinstance(entry, dotdict):
+            entry = dotdict(entry)
+            build_config[field_name] = entry
+
+        value_copy = deepcopy(value)
+        entry["value"] = value_copy
+
+        try:
+            self._set_parameter_or_attribute(field_name, deepcopy(value))
+        except Exception:  # noqa: BLE001
+            # Field might not be a formal input; ignore and keep build_config updated.
+            pass
+
+        return entry
+
     def parse_curl(self, curl: str, build_config: dotdict) -> dotdict:
         """Parse a cURL command and update build configuration."""
         try:
@@ -246,29 +268,33 @@ class APIRequestComponent(Component):
             # Normalize URL before setting it
             url = self._normalize_url(url)
 
-            build_config["url_input"]["value"] = url
-            build_config["method"]["value"] = parsed.method.upper()
+            self._ensure_build_config_value(build_config, "curl_input", curl)
+            self._ensure_build_config_value(build_config, "url_input", url)
+            self._ensure_build_config_value(build_config, "method", parsed.method.upper())
 
             # Process headers
             headers_list = [{"key": k, "value": v} for k, v in parsed.headers.items()]
-            build_config["headers"]["value"] = headers_list
+            self._ensure_build_config_value(build_config, "headers", headers_list)
 
             # Process body data
             if not parsed.data:
-                build_config["body"]["value"] = []
+                body_value: list[dict[str, Any]] = []
             elif parsed.data:
                 try:
                     json_data = json.loads(parsed.data)
                     if isinstance(json_data, dict):
-                        body_list = [
+                        body_value = [
                             {"key": k, "value": json.dumps(v) if isinstance(v, dict | list) else str(v)}
                             for k, v in json_data.items()
                         ]
-                        build_config["body"]["value"] = body_list
                     else:
-                        build_config["body"]["value"] = [{"key": "data", "value": json.dumps(json_data)}]
+                        body_value = [{"key": "data", "value": json.dumps(json_data)}]
                 except json.JSONDecodeError:
-                    build_config["body"]["value"] = [{"key": "data", "value": parsed.data}]
+                    body_value = [{"key": "data", "value": parsed.data}]
+            else:
+                body_value = []
+
+            self._ensure_build_config_value(build_config, "body", body_value)
 
         except Exception as exc:
             msg = f"Error parsing curl: {exc}"
@@ -470,11 +496,13 @@ class APIRequestComponent(Component):
                 return self.parse_curl(self.curl_input, build_config)
             return build_config
 
-        # print(f"Current mode: {field_value}")
         if field_value == "cURL":
             set_field_display(build_config, "curl_input", value=True)
             if build_config["curl_input"]["value"]:
-                build_config = self.parse_curl(build_config["curl_input"]["value"], build_config)
+                try: 
+                    build_config = self.parse_curl(build_config["curl_input"]["value"], build_config)
+                except ValueError as e:
+                    self.log(f"Failed to parse cURL input: {e}")
         else:
             set_field_display(build_config, "curl_input", value=False)
 
